@@ -37,6 +37,6 @@ WUControl v2.5
 ---
 
 ## 📥 Download
-Download langsung dari repository atau [releases](#) (jika ada)  
+Download langsung dari repository atau [releases](https://github.com/r3ndycom/wucontrol/releases) (jika ada)  
 
 ---
