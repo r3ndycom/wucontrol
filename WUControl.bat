@@ -451,111 +451,109 @@ echo.
 pause
 goto MENU
 
-:: --- MENU 0: CEK PEMBARUAN DENGAN MD5 ---
-:menu_check_update
-:: -------------------------
-:: Variabel script saat ini
-:: -------------------------
+:: =====================================================
+:: MENU 0 - CEK PEMBARUAN
+:: =====================================================
+:MENU_CHECK_UPDATE
+cls
+color 0F
+echo =====================================================
+echo              [CEK PEMBARUAN / REPAIR]
+echo =====================================================
+echo.
+
+:: --- Variabel dasar
 set "THIS_CMD=%~f0"
 for %%I in ("%~nx0") do set "SCRIPT_NAME=%%~nxI" & set "SCRIPT_BASE=%%~nI"
 set "TMP_DL=%TEMP%\%SCRIPT_BASE%_update.tmp"
-set "REPL_BAT=%TEMP%\replace_and_run_%RANDOM%.bat"
+set "REPL_BAT=%TEMP%\replace_%SCRIPT_BASE%_%RANDOM%.bat"
 
-:: -------------------------
-:: Cek koneksi internet
-:: -------------------------
-cls
-echo.
+:: --- Cek koneksi internet
 echo [INFO] Memeriksa koneksi internet...
-
-powershell -Command ^
-  "$response = $null; try { $response = Invoke-WebRequest -Uri 'https://www.google.com' -UseBasicParsing -TimeoutSec 5 } catch {}; if ($response.StatusCode -eq 200) { exit 0 } else { exit 1 }"
+powershell -NoProfile -Command ^
+  "$r=$false;try{$r=(iwr 'https://www.google.com' -UseBasicParsing -TimeoutSec 5).StatusCode -eq 200}catch{};if($r){exit 0}else{exit 1}"
 
 if errorlevel 1 (
     color 0C
-    echo [PERINGATAN] Tidak ada koneksi internet.
+    echo [ERROR] Tidak ada koneksi internet.
     pause
-    goto menu
+    goto MENU
 ) else (
     echo [OK] Terhubung ke internet.
 )
 
-:: -------------------------
-:: URL GitHub raw
-:: -------------------------
+:: --- URL sumber file dan checksum
 set "REMOTE_MD5_URL=https://raw.githubusercontent.com/r3ndycom/wucontrol/main/%SCRIPT_BASE%.md5"
 set "REMOTE_FILE_URL=https://raw.githubusercontent.com/r3ndycom/wucontrol/main/%SCRIPT_NAME%"
 
-:: Ambil MD5 remote
-echo [INFO] Mengambil MD5 dari server...
-for /f "delims=" %%A in ('powershell -NoProfile -Command "try { (Invoke-RestMethod -Uri '%REMOTE_MD5_URL%' -UseBasicParsing).Trim() } catch { Write-Output '' }"') do set "REMOTE_MD5=%%A"
+:: --- Ambil MD5 remote
+echo [INFO] Mengambil hash MD5 versi terbaru...
+for /f "delims=" %%A in ('powershell -NoProfile -Command "try{(Invoke-RestMethod -Uri '%REMOTE_MD5_URL%' -UseBasicParsing).Trim()}catch{''}"') do set "REMOTE_MD5=%%A"
 
 if "%REMOTE_MD5%"=="" (
-    echo [PERINGATAN] Gagal mengambil MD5 dari server.
+    color 0C
+    echo [ERROR] Gagal mengambil MD5 dari server.
     pause
-    goto menu
+    goto MENU
 )
-echo Remote MD5: %REMOTE_MD5%
+echo Remote MD5 : %REMOTE_MD5%
 
-:: Hitung MD5 lokal
-if exist "%THIS_CMD%" (
-    for /f "delims=" %%A in ('powershell -NoProfile -Command "(Get-FileHash -Algorithm MD5 -Path '%THIS_CMD%').Hash"') do set "LOCAL_MD5=%%A"
-) else (
-    set "LOCAL_MD5="
-)
-echo Local  MD5: %LOCAL_MD5%
+:: --- Hitung MD5 lokal
+for /f "delims=" %%A in ('powershell -NoProfile -Command "(Get-FileHash -Path '%THIS_CMD%' -Algorithm MD5).Hash"') do set "LOCAL_MD5=%%A"
+echo Local  MD5 : %LOCAL_MD5%
 
+:: --- Bandingkan
 if /i "%LOCAL_MD5%"=="%REMOTE_MD5%" (
-    echo [OK] Script sudah paling baru.
+    color 0A
+    echo [OK] Versi skrip sudah yang terbaru.
     pause
-    goto menu
+    goto MENU
 )
 
-:: -------------------------
-:: Download file baru
-:: -------------------------
-echo [PERINGATAN] Pembaruan tersedia!
-echo [INFO] Mendownload versi baru...
-powershell -NoProfile -Command "Invoke-WebRequest -Uri '%REMOTE_FILE_URL%' -OutFile '%TMP_DL%' -UseBasicParsing"
+:: --- Jika berbeda → unduh versi baru
+color 0E
+echo [INFO] Pembaruan tersedia! Mengunduh versi terbaru...
+powershell -NoProfile -Command "Invoke-WebRequest -Uri '%REMOTE_FILE_URL%' -OutFile '%TMP_DL%' -UseBasicParsing" >nul 2>&1
 
-:: Cek MD5 hasil download
+if not exist "%TMP_DL%" (
+    color 0C
+    echo [ERROR] Gagal mengunduh file pembaruan.
+    pause
+    goto MENU
+)
+
+:: --- Verifikasi hash hasil download
 for /f "delims=" %%A in ('powershell -NoProfile -Command "(Get-FileHash -Algorithm MD5 -Path '%TMP_DL%').Hash"') do set "DL_MD5=%%A"
-echo Downloaded MD5: %DL_MD5%
+echo Download MD5: %DL_MD5%
 
 if /i not "%DL_MD5%"=="%REMOTE_MD5%" (
-    echo [PERINGATAN] MD5 hasil download TIDAK cocok. Abort.
-    del /f /q "%TMP_DL%"
+    color 0C
+    echo [ERROR] Hash file unduhan tidak cocok. Update dibatalkan.
+    del /f /q "%TMP_DL%" >nul 2>&1
     pause
-    goto menu
+    goto MENU
 )
 
-:: -------------------------
-:: Buat helper untuk mengganti file
-:: -------------------------
+:: --- Buat skrip pengganti sementara
 (
     echo @echo off
-    echo timeout /t 1 >nul
-    echo :loop
-    echo copy /y "%TMP_DL%" "%THIS_CMD%" >nul 2^>^&1
-    echo if exist "%THIS_CMD%" (goto next) else (timeout /t 1 >nul & goto loop)
-    echo :next
-    echo del /f /q "%TMP_DL%" >nul 2^>^&1
-    echo echo [OK] %SCRIPT_NAME% berhasil diperbarui.
+    echo title Updating WUControl...
+    echo timeout /t 1 ^>nul
+    echo echo [INFO] Memperbarui file skrip...
+    echo copy /y "%TMP_DL%" "%THIS_CMD%" ^>nul 2^>^&1
+    echo del /f /q "%TMP_DL%" ^>nul 2^>^&1
+    echo echo [OK] Pembaruan selesai. Menjalankan ulang skrip baru...
     echo start "" "%THIS_CMD%"
+    echo exit
 ) > "%REPL_BAT%"
 
-:: -------------------------
-:: Informasi & timeout sebelum helper dijalankan
-:: -------------------------
 echo.
-echo [INFO] Memperbarui skrip: %SCRIPT_NAME%
-echo [INFO] Proses akan dimulai dalam 5 detik...
+echo [INFO] File pengganti telah disiapkan.
+echo [INFO] Proses update akan dimulai dalam 5 detik...
 timeout /t 5 >nul
 
-echo [INFO] Menjalankan proses penggantian...
-call "%REPL_BAT%"
-
-:: Hentikan skrip lama supaya bisa mengganti file baru
+:: --- Jalankan updater lalu keluar dari skrip lama
+start "" "%REPL_BAT%"
 exit /b
 
 
