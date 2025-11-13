@@ -452,7 +452,7 @@ pause
 goto MENU
 
 :: =====================================================
-:: MENU 0 - CEK PEMBARUAN
+:: MENU 0 - CEK PEMBARUAN (Universal, Tidak Tergantung Nama File Lokal)
 :: =====================================================
 :MENU_CHECK_UPDATE
 cls
@@ -464,9 +464,11 @@ echo.
 
 :: --- Variabel dasar
 set "THIS_CMD=%~f0"
-for %%I in ("%~nx0") do set "SCRIPT_NAME=%%~nxI" & set "SCRIPT_BASE=%%~nI"
-set "TMP_DL=%TEMP%\%SCRIPT_BASE%_update.tmp"
-set "REPL_BAT=%TEMP%\replace_%SCRIPT_BASE%_%RANDOM%.bat"
+set "TMP_NAME=WUControl"
+set "REMOTE_NAME=%TMP_NAME%.bat"
+set "REMOTE_BASE=%TMP_NAME%"
+set "TMP_DL=%TEMP%\%REMOTE_BASE%_update.tmp"
+set "REPL_BAT=%TEMP%\replace_%REMOTE_BASE%_%RANDOM%.bat"
 
 :: --- Cek koneksi internet
 echo [INFO] Memeriksa koneksi internet...
@@ -476,6 +478,7 @@ powershell -NoProfile -Command ^
 if errorlevel 1 (
     color 0C
     echo [ERROR] Tidak ada koneksi internet.
+    echo Pastikan koneksi aktif, lalu coba lagi.
     pause
     goto MENU
 ) else (
@@ -483,16 +486,41 @@ if errorlevel 1 (
 )
 
 :: --- URL sumber file dan checksum
-set "REMOTE_MD5_URL=https://raw.githubusercontent.com/r3ndycom/wucontrol/main/%SCRIPT_BASE%.md5"
-set "REMOTE_FILE_URL=https://raw.githubusercontent.com/r3ndycom/wucontrol/main/%SCRIPT_NAME%"
+set "REMOTE_MD5_URL=https://raw.githubusercontent.com/r3ndycom/wucontrol/main/%REMOTE_BASE%.md5"
+set "REMOTE_FILE_URL=https://raw.githubusercontent.com/r3ndycom/wucontrol/main/%REMOTE_NAME%"
 
 :: --- Ambil MD5 remote
-echo [INFO] Mengambil hash MD5 versi terbaru...
-for /f "delims=" %%A in ('powershell -NoProfile -Command "try{(Invoke-RestMethod -Uri '%REMOTE_MD5_URL%' -UseBasicParsing).Trim()}catch{''}"') do set "REMOTE_MD5=%%A"
+echo [INFO] Mengambil hash MD5 versi terbaru dari server...
+set "REMOTE_MD5="
+for /f "delims=" %%A in ('
+    powershell -NoProfile -Command ^
+    "$ErrorActionPreference='SilentlyContinue';" ^
+    "try {" ^
+    "  $resp = Invoke-RestMethod -Uri '%REMOTE_MD5_URL%' -UseBasicParsing;" ^
+    "  if ($resp) { $resp.Trim() } else { '' }" ^
+    "} catch {" ^
+    "  Write-Host '[PS ERROR] ' + $_.Exception.Message;" ^
+    "  ''" ^
+    "}"
+') do (
+    echo %%A | findstr /i "[PS ERROR]" >nul
+    if errorlevel 1 (set "REMOTE_MD5=%%A") else (echo %%A)
+)
 
 if "%REMOTE_MD5%"=="" (
     color 0C
-    echo [ERROR] Gagal mengambil MD5 dari server.
+    echo [ERROR] Gagal mengambil MD5 dari server:
+    echo    %REMOTE_MD5_URL%
+    echo.
+    echo [PENYEBAB MUNGKIN:]
+    echo  - URL salah atau file .md5 belum diunggah.
+    echo  - Server GitHub sedang tidak bisa diakses.
+    echo  - Ada firewall / proxy yang memblokir PowerShell.
+    echo.
+    echo [SARAN:]
+    echo  - Buka manual URL di browser untuk memastikan bisa diakses.
+    echo  - Pastikan koneksi internet stabil.
+    echo.
     pause
     goto MENU
 )
@@ -502,7 +530,7 @@ echo Remote MD5 : %REMOTE_MD5%
 for /f "delims=" %%A in ('powershell -NoProfile -Command "(Get-FileHash -Path '%THIS_CMD%' -Algorithm MD5).Hash"') do set "LOCAL_MD5=%%A"
 echo Local  MD5 : %LOCAL_MD5%
 
-:: --- Bandingkan
+:: --- Bandingkan hash
 if /i "%LOCAL_MD5%"=="%REMOTE_MD5%" (
     color 0A
     echo [OK] Versi skrip sudah yang terbaru.
@@ -517,7 +545,8 @@ powershell -NoProfile -Command "Invoke-WebRequest -Uri '%REMOTE_FILE_URL%' -OutF
 
 if not exist "%TMP_DL%" (
     color 0C
-    echo [ERROR] Gagal mengunduh file pembaruan.
+    echo [ERROR] Gagal mengunduh file pembaruan dari:
+    echo    %REMOTE_FILE_URL%
     pause
     goto MENU
 )
@@ -537,9 +566,9 @@ if /i not "%DL_MD5%"=="%REMOTE_MD5%" (
 :: --- Buat skrip pengganti sementara
 (
     echo @echo off
-    echo title Updating WUControl...
+    echo title Memperbarui %REMOTE_NAME%...
     echo timeout /t 1 ^>nul
-    echo echo [INFO] Memperbarui file skrip...
+    echo echo [INFO] Memperbarui file skrip di lokasi: "%THIS_CMD%"
     echo copy /y "%TMP_DL%" "%THIS_CMD%" ^>nul 2^>^&1
     echo del /f /q "%TMP_DL%" ^>nul 2^>^&1
     echo echo [OK] Pembaruan selesai. Menjalankan ulang skrip baru...
@@ -555,6 +584,7 @@ timeout /t 5 >nul
 :: --- Jalankan updater lalu keluar dari skrip lama
 start "" "%REPL_BAT%"
 exit /b
+
 
 
 :: =====================================================
