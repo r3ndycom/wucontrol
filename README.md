@@ -1,4 +1,4 @@
-# 🛠️ Windows Update Control v2.5
+# 🛠️ Windows Update Control
 
 ![Windows](https://img.shields.io/badge/OS-Windows-blue) ![Version](https://img.shields.io/badge/Version-2.5-green) ![License](https://img.shields.io/badge/License-Free-orange)
 
@@ -27,7 +27,7 @@ Kompatibel dengan **Windows 10, 11, LTSC, Server 2016-2025**.
 ---
 
 ## 🔧 Versi
-WUControl v2.5
+WUControl v2.8
 
 ---
 
